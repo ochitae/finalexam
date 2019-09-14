@@ -64,7 +64,6 @@ func (app MyApp) createCustomerHandler(c *gin.Context) {
 	)
 	err = row.Scan(&cs.ID)
 	if err != nil {
-		log.Println("Cannot scan id", err)
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -76,7 +75,8 @@ func (app MyApp) getCustomerHandler(c *gin.Context) {
 	var cs Customer
 	stmt, err := app.DB.Prepare("select id, name, email, status from customer where id=$1")
 	if err != nil {
-		log.Fatal("cannot prepare sql", err)
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
 	}
 	row := stmt.QueryRow(id)
 
@@ -97,7 +97,7 @@ func (app MyApp) getCustomersHandler(c *gin.Context) {
 		return
 	}
 
-	rows, err  := stmt.Query()
+	rows, err := stmt.Query()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
@@ -113,6 +113,41 @@ func (app MyApp) getCustomersHandler(c *gin.Context) {
 
 	}
 	c.JSON(http.StatusOK, css)
+}
+
+func (app MyApp) updateCustomerHandler(c *gin.Context) {
+	id := c.Param("id")
+	var cs Customer
+	err := c.ShouldBindJSON(&cs)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	stmt, err := app.DB.Prepare("update customer set name=$2, email=$3, status=$4 where id=$1")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := stmt.Exec(id, cs.Name, cs.Email, cs.Status); err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	app.getCustomerHandler(c)
+}
+
+func (app MyApp) deleteCustomerHandler(c *gin.Context) {
+	id := c.Param("id")
+	stmt, err := app.DB.Prepare("delete from customer where id=$1")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	if _, err := stmt.Exec(id); err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "customer deleted"})
 }
 
 func main() {
@@ -132,5 +167,7 @@ func main() {
 	r.POST("/customers", app.createCustomerHandler)
 	r.GET("/customers/:id", app.getCustomerHandler)
 	r.GET("/customers", app.getCustomersHandler)
+	r.PUT("/customers/:id", app.updateCustomerHandler)
+	r.DELETE("/customers/:id", app.deleteCustomerHandler)
 	r.Run(":2019")
 }
